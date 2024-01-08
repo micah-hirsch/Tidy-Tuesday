@@ -1,0 +1,49 @@
+---
+title: "NHL Birth Months"
+author: "Micah Hirsch"
+date: "`r Sys.Date()`"
+output: github_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Import Data
+
+```{r}
+
+library(tidytuesdayR) # install.packages("tidytuesdayR")
+library(tidyverse) # install.packages("tidyverse")
+
+data <- tidytuesdayR::tt_load('2024-01-09')
+
+births_canada <- data$canada_births_1991_2022
+nhl_births <- data$nhl_player_births
+nhl_teams <- data$nhl_teams
+nhl_rosters <- data$nhl_rosters
+
+rm(data)
+
+```
+
+# Data Exploration
+
+## Recreating Figure from JLaw's R Blog Post
+
+Link: <https://jlaw.netlify.app/2023/12/04/are-birth-dates-still-destiny-for-canadian-nhl-players/>
+
+```{r}
+
+births_canada %>%
+  dplyr::group_by(month) %>%
+  dplyr::summarize(n_births = sum(births)) %>%
+  dplyr::ungroup() %>%
+  dplyr::mutate(month_label = month.abb[month],
+                p_births = n_births/sum(n_births),
+                p_expected = case_when(month_label == "Feb" ~ 28/365,
+                                       month_label %in% 
+                                         c("Apr", "Jun", "Sep", "Nov") ~ 30/365,
+                                       TRUE ~ 31/365))
+
+```
