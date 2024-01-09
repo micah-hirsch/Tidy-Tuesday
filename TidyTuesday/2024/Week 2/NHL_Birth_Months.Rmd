@@ -11,10 +11,11 @@ knitr::opts_chunk$set(echo = TRUE)
 
 # Import Data
 
-```{r}
+```{r, warning = F, message = F}
 
 library(tidytuesdayR) # install.packages("tidytuesdayR")
 library(tidyverse) # install.packages("tidyverse")
+library(gt) # install.packages("gt")
 
 data <- tidytuesdayR::tt_load('2024-01-09')
 
@@ -27,24 +28,136 @@ rm(data)
 
 ```
 
-# Data Exploration
+# Recreating Birth Month Figure
+
+This week, I am focused on recreating a version of the figure from JLaw's blog post (linked below). 
 
 Link: <https://jlaw.netlify.app/2023/12/04/are-birth-dates-still-destiny-for-canadian-nhl-players/>
 
-```{r}
+## Gather Canadian NHL Player Birth Information
+
+First, I am going to gather the birth year and month information from the Canadian NHL players. Since the Canadian births dataset is from years 1991 to 2022, I am going to filter out players who were born before 1991.
+
+After this filtering out players born before 1991, I checked the year range in the dataset. 
+
+```{r, warning = F, message = F}
 
 canadian_players <- nhl_births |>
+  # Filter to include only Canadian NHL Players
   dplyr::filter(birth_country == "CAN") |>
+  # Filter to include those players born in or after 1991
   dplyr::filter(birth_year >= 1991) |>
+  # selecting the variables that I need
   select(player_id, birth_year, birth_month)
 
-NJ_devils_roster <- nhl_rosters |>
-  dplyr::filter(birth_country == "CAN") |>
-  dplyr::filter(team_code == "NJD") |>
-  dplyr::select(player_id, season, position_type, birth_date)
+
+canadian_players |>
+  dplyr::summarize(min_year = min(birth_year),
+                   max_year = max(birth_year)) |>
+  gt::gt() |>
+  gt::cols_label(min_year = "Min",
+                 max_year = "Max") |>
+  gt::tab_spanner(label = "Age Range",
+              columns = c("min_year", "max_year"))
+  
 
 
 
 ```
 
+## Gathering Canadian Birth Information
+
+Now I'll look at the overall Canadian birth data. Since we know the year range for the Canadian NHL players is from 1991 to 2005, I am filtering out the data from years after 2005 (to my knowledge, this step was not done in the blog post). 
+
+From there, I am calculating the overall percentage of Canadian births that happen for each calendar month across those years. Also, like in the JLaw's blog post, I will calculate the expected percent births per month assuming everyday of the year had an equal chance.
+
+```{r, warning = F, message = F}
+
+births <- births_canada |>
+  # filtering out years above 2005
+  dplyr::filter(year <= 2005) |>
+  # Calculating sum of births per calendar month between 1991 and 2005
+  dplyr::group_by(month) |>
+  dplyr::summarize(n_births = sum(births)) |>
+  dplyr::ungroup() |>
+  # Calculating actual percent births and expected percent births
+  dplyr::mutate(p_births = n_births/sum(n_births),
+                month_label = month.abb[month],
+                month_label = as.factor(month_label),
+                month_label = fct_relevel(month_label, "Jan", "Feb",
+                                          "Mar", "Apr", "May", "Jun",
+                                          "Jul", "Aug", "Sep", "Oct",
+                                          "Nov", "Dec"),
+                p_expected = case_when(
+                  month_label %in% c("Apr", "Jun", "Sep", "Nov") ~ 30/365,
+                  month_label == "Feb" ~ 28/365,
+                  TRUE ~ 31/365)) 
+
+births |>
+  dplyr::select(month_label, p_births, p_expected) |>
+  tidyr::gather(label, value, -month_label) |>
+  tidyr::spread(month_label, value) |>
+  dplyr::mutate(across(Jan:Dec, ~scales::percent(., accuracy = .01))) |>
+  dplyr::mutate(label = recode(label, p_births = "Actual % Births", 
+                               p_expected = "Expected % Births")) |>
+  gt::gt() %>%
+  gt::cols_label(label = "")
+  
+
+```
+
+Based on the chart above, the actual percent of Canadian births in January between 1991 and 2005 is lower than the expected percent of Canadian births. The percentages above initially suggest Canadians are more likely to be born in the spring and summer. Although I did an extra filtering step, this is still consistent with the data reported in JLaw's blog post.
+
+## Gathering Percent Births per Month for the NHL Players
+
+I am now going to extract the percent births for each month for the NHL players and merge it with the overall Canadian birth data
+
+```{r, warning = F, message = F}
+
+canadian_players <- canadian_players |>
+  dplyr::group_by(birth_month) |>
+  dplyr::summarize(n_births = n()) |>
+  dplyr::ungroup() |>
+  dplyr::mutate(p_nhl = n_births/sum(n_births)) |>
+  dplyr::rename(month = birth_month) |>
+  dplyr::select(-n_births)
+
+merged <- births |>
+  dplyr::select(-n_births) |>
+  dplyr::left_join(canadian_players, by = "month") |>
+  dplyr::select(-month)
+
+# creating a color palette with NJ Devils colors
+my_pal <- c("Canadian NHL Players" = "#CE1126", "Canadian Population" = "#000000")
+
+merged |>
+  ggplot() +
+  aes(x = month_label) +
+  geom_line(aes(y = p_expected, group = 1), 
+            linetype = "dashed") +
+  geom_linerange(aes(ymin = p_births, ymax = p_nhl)) +
+  geom_point(aes(y = p_births, color = "Canadian Population"), size = 3) +
+  geom_point(aes(y = p_nhl, color = "Canadian NHL Players"), size = 3) +
+  geom_text(aes(label = scales::percent(p_births, accuracy = 0.01),
+                y = if_else(p_births > p_nhl, p_births + .007,
+                            p_births - .007)), size = 3) +
+  geom_text(aes(label = scales::percent(p_nhl, accuracy = 0.007),
+                y = if_else(p_nhl > p_births, p_nhl + .01,
+                            p_nhl - .007)), size = 3) +
+  coord_flip() +
+  scale_x_discrete(limits = rev(levels(merged$month_label))) +
+  labs(x = "Birth Month",
+       y = "Percent",
+       title = "Canadian NHL Player Birth Months") +
+  scale_color_manual(values = my_pal) +
+  theme_bw() +
+  theme(legend.position = "bottom", legend.title = element_blank())
+
+```
+
+```{r}
+
+ggsave("NHL_birth_months.png", plot = last_plot())
+
+```
 
