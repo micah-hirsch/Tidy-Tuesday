@@ -29,21 +29,22 @@ rm(data)
 
 # Data Exploration
 
-## Recreating Figure from JLaw's R Blog Post
-
 Link: <https://jlaw.netlify.app/2023/12/04/are-birth-dates-still-destiny-for-canadian-nhl-players/>
 
 ```{r}
 
-births_canada %>%
-  dplyr::group_by(month) %>%
-  dplyr::summarize(n_births = sum(births)) %>%
-  dplyr::ungroup() %>%
-  dplyr::mutate(month_label = month.abb[month],
-                p_births = n_births/sum(n_births),
-                p_expected = case_when(month_label == "Feb" ~ 28/365,
-                                       month_label %in% 
-                                         c("Apr", "Jun", "Sep", "Nov") ~ 30/365,
-                                       TRUE ~ 31/365))
+canadian_players <- nhl_births |>
+  dplyr::filter(birth_country == "CAN") |>
+  dplyr::filter(birth_year >= 1991) |>
+  select(player_id, birth_year, birth_month)
+
+NJ_devils_roster <- nhl_rosters |>
+  dplyr::filter(birth_country == "CAN") |>
+  dplyr::filter(team_code == "NJD") |>
+  dplyr::select(player_id, season, position_type, birth_date)
+
+
 
 ```
+
+
