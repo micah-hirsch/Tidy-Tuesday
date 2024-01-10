@@ -58,7 +58,8 @@ canadian_players |>
   gt::cols_label(min_year = "Min",
                  max_year = "Max") |>
   gt::tab_spanner(label = "Age Range",
-              columns = c("min_year", "max_year"))
+              columns = c("min_year", "max_year")) |>
+  gt::as_raw_html()
   
 
 
@@ -101,7 +102,8 @@ births |>
   dplyr::mutate(label = recode(label, p_births = "Actual % Births", 
                                p_expected = "Expected % Births")) |>
   gt::gt() %>%
-  gt::cols_label(label = "")
+  gt::cols_label(label = "") |>
+  gt::as_raw_html()
   
 
 ```
@@ -155,7 +157,7 @@ merged |>
 
 ```
 
-```{r}
+```{r, echo = F, warning = F, message = F}
 
 ggsave("NHL_birth_months.png", plot = last_plot())
 
