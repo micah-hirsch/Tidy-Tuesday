@@ -1,0 +1,138 @@
+---
+title: "US Polling Places"
+author: "Micah Hirsch"
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Import Data
+
+```{r}
+
+library(tidyverse) # install.packages("tidyverse")
+library(tidytuesdayR) # install.packages("tidytuesdayR")
+library(lubridate) # install.packages("lubridate")
+library(gganimate) # install.packages("gganimate")
+library(usmap) # install.packages("usmap")
+library(ggmap) # install.packages("ggmap")
+
+data <- tidytuesdayR::tt_load('2024-01-16')
+
+polling_places <- data$polling_places
+
+rm(data)
+
+```
+
+
+# Static Plot
+
+```{r}
+
+# Getting number of polling places in each state for each yeat
+places_df <- polling_places |>
+  dplyr::mutate(election_year = year(election_date), .after = state) |>
+  dplyr::group_by(election_year, state) |>
+  dplyr::summarize(polling_places = n())
+
+# Creating am empty list to temporarily store dfs
+data_list <- list()
+
+# extracting years from places_df
+years <- unique(places_df$election_year)
+
+# Getting coordinates for US Map
+states <- usmap::us_map() |>
+  dplyr::rename(state = abbr)
+  
+# Merging US coordinates with places_df
+for (year in years) {
+  
+  data <- places_df |>
+    dplyr::filter(election_year == year) |>
+    dplyr::full_join(states, by = "state") |>
+    dplyr::mutate(election_year = year)
+    
+  data_list[[length(data_list)+1]] <- data
+      
+  merged <- do.call(rbind, data_list)
+        
+}
+
+# Creating Color Palette for Plots
+library(LaCroixColoR)
+colors <- lacroix_palette("Berry", n = 15, type = "continuous")
+my_pal <- rev(colors)
+
+# Static Plot
+merged |>
+  ggplot() +
+  aes(x = x,
+      y = y,
+      fill = polling_places,
+      group = group) +
+  geom_polygon(color = "white") +
+  coord_fixed(1.3) +
+  facet_wrap("election_year") +
+  labs(title = "Change in US Polling Places",
+       caption = "Data Source: The Center for Public Integrity",
+       fill = "Number of \nPolling Places") +
+  scale_fill_gradientn(colors = my_pal) +
+  theme_classic() +
+  theme(axis.text = element_blank(),
+        axis.line = element_blank(),
+        axis.ticks = element_blank(),
+        axis.title = element_blank(),
+        legend.position = "bottom",
+        plot.title = element_text(size = 20, hjust = 0.5),
+        plot.caption.position = "plot",
+        aspect.ratio = 1)
+
+ggsave("US_polling_places.png", plot = last_plot(), width = 10, heigh = 10, units = "in")
+
+
+# Removing unneeded items
+rm(data, data_list, states, colors, places_df, polling_places, year, years)
+
+```
+
+
+# Animated Plot
+
+```{r}
+
+animated_plot <- merged |>
+  ggplot() +
+  aes(x = x,
+      y = y,
+      fill = polling_places,
+      group = group) +
+  geom_polygon(color = "white") +
+  coord_fixed(1.3) +
+  transition_states(election_year) +
+  labs(title = "Year: {closest_state}",
+       subtitle = "Change in number of polling places between 2012 and 2020.",
+       caption = "Data Source: The Center for Public Integrity",
+       fill = "Number of \nPolling Places") +
+  scale_fill_gradientn(colors = my_pal) +
+  theme_classic() +
+  theme(axis.text = element_blank(),
+        axis.line = element_blank(),
+        axis.ticks = element_blank(),
+        axis.title = element_blank(),
+        legend.position = "bottom",
+        plot.title = element_text(size = 20, hjust = 0.5),
+        plot.subtitle = element_text(size = 15, hjust = 0.5),
+        plot.caption.position = "plot",
+        aspect.ratio = 1)
+  
+animate(animated_plot, renderer = gifski_renderer())
+
+anim_save("US_polling_places.gif", animation = last_animation())
+
+```
+
